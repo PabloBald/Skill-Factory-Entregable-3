@@ -5,7 +5,9 @@
   "scripts": {
     "start": "node app.js",
     "test": "mocha --exit",
-    "seed": "node ./seeders/seeders.js --trace-warnings"
+    "migrate": "npx prisma db push",
+    "seed": "node ./seeders/seeders.js --trace-warnings",
+    "deploy": "npm migrate && npm seed && npm start"
   },
   "author": "",
   "license": "ISC",
