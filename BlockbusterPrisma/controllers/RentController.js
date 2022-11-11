@@ -1,11 +1,8 @@
 const { PrismaClient } = require("@prisma/client");
-const prismaError = require("../helpers/errorsPrisma");
-
 const { rentPrice } = require("../helpers/rentPrice");
-const ResponseObject = require("../helpers/ResponseObject")
 const prisma = new PrismaClient();
 
-const getAllRents = async (req, res) => {
+const getAllRents = async (req, res,next) => {
   try {
     let { order } = req.query;
 
@@ -22,27 +19,43 @@ const getAllRents = async (req, res) => {
       rents.sort((a, b) => b.id_rent - a.id_rent)
     }
 
-    rents.length > 0
-      ? res.status(200).json(rents)
-      : res.status(404).json({ errorMessage: "Rent not found" });
-
+    if(rents.length<1){
+      let error = new Error("Rents not found.");
+      error.status = 404;
+      return next(error);
+    }
+    res.status(200).json(rents)
   } catch (error) {
-    console.log(error);
-    const { name } = error;
-    const errorMessage = prismaError[name] || "Internal server error";
-    res.status(500).json({ errorMessage });
+    let err = new Error();
+    err.status = 500;
+    return next(err);
   }
 };
-const rentMovie = (req, res, next) => {
+const rentMovie = async(req, res, next) => {
   try {
-    const { code } = req.params;
+    const { _code } = req.params;
 
-  prisma.movies.findUnique({ where: { code: code } }).then((rental) => {
-    if (!rental) return res.status(400).json(" Movie Not Found ");
-    if (rental.stock === 0) {
-      return res.status(400).json(
-        new ResponseObject("Movie not available",false,400));
+    let rents= await prisma.rents
+      .findMany({ where: { id_user: req.user.id,userRefund_date: null,code: _code} })
+    if(rents){
+      let error = new Error("Can't rent a movie twice.");
+      error.status = 400;
+      return next(error);
     }
+
+  prisma.movies.findUnique({ where: { code: _code } }).then((rental) => {
+    if (!rental) {
+      let error = new Error("Movie not found")
+      error.status = 400;
+      return next(error);
+    }
+
+    if (rental.stock === 0) {
+        let error = new Error("Movie not available")
+        error.status = 400;
+        return next(error);
+    }
+
     prisma.rents
       .create({
         data: {
@@ -62,9 +75,9 @@ const rentMovie = (req, res, next) => {
       });
   });
   } catch (error) {
-    const { name } = error;
-    const errorMessage = prismaError[name] || "Internal server error";
-    res.status(500).json({ errorMessage });
+    let err = new Error("Internal server error");
+    err.status = 500;
+    return next(err);
   }
   
 };
@@ -88,7 +101,7 @@ const rentsByUser = async (req, res, next) => {
       .findMany({ where: { id_user: req.user.id } })
       //Aca deberia filtrar las tienen userRefund_date en null y mostrarlas
       let rentsbyuser=allHistoryRent.filter(rent=>rent.userRefund_date===null)
-      console.log(rentsbyuser)
+    
       if (order === "asc") {
 
         rentsbyuser.sort((a, b) => a.rent_date - b.rent_date)
@@ -97,9 +110,12 @@ const rentsByUser = async (req, res, next) => {
   
         rentsbyuser.sort((a, b) => b.rent_date - a.rent_date)
       }
-      rentsbyuser.length > 0
-      ? res.status(200).json(rentsbyuser)
-      : res.status(404).json({ errorMessage: "Movies not found" });
+      if(rentsbyuser.length < 1){
+        let err = new Error("Movies not found");
+        err.status = 404;
+        return next(err);
+      }
+      res.status(200).json(rentsbyuser)
   } catch (error) {
     console.log(error);
     res.status(500).send("Service unavailable");
@@ -117,7 +133,11 @@ const returnRent = async (req, res) => {
       },
     });
 
-    if (!rent) return res.status(404).json({ errorMessage: "Rent not found" });
+    if (!rent){
+      let error = new Error("Rent not found");
+      error.status = 404;
+      return next(error);
+    }
 
     rent.userRefund_date = new Date();
 
@@ -153,12 +173,9 @@ const returnRent = async (req, res) => {
     });
     //await prisma.rents.delete({ where: { id_rent: id } });
   } catch (error) {
-    console.log(error);
-
-    const { name } = error;
-
-    const errorMessage = prismaError[name] || "Internal server error";
-    res.status(500).json({ errorMessage });
+    let err = new Error();
+    err.status = 500;
+    return next(err);
   }
 };
 module.exports = {

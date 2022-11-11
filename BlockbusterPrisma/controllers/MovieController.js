@@ -10,12 +10,12 @@ const jwt = require("jsonwebtoken");
 async function getFilmFromAPIByName(name) {
 	let films = await fetch("https://ghibliapi.herokuapp.com/films");
 	films = await films.json();
-	return prisma.films.findUnique((film) => film.title.includes(name));
+	film = films.find((m) => m.title === name);
+	return film;
 }
 
 const getMovies = async (req, res) => {
 	const { order } = req.query;
-
 	const response = await fetch("https://ghibliapi.herokuapp.com/films");
 	const movies = await response.json();
 	if (order === "desc") {
@@ -50,9 +50,9 @@ const getMovieDetails = async (req, res) => {
 		const movie = movies.find((movie) => movie.id === id);
 		res.status(200).send(movie);
 	} catch (error) {
-		const { name } = error;
-		const errorMessage = prismaError[name] || "Internal server error";
-		res.status(500).json({ errorMessage });
+		let err = new Error();
+		error.status = 500;
+		return next(error);
 	}
 };
 
@@ -75,18 +75,35 @@ const getMovieByTitle = async (req, res, next) => {
 };
 
 const addMovie = async (req, res, next) => {
-	const movie = await getFilmFromAPIByName(req.body.title);
+	
+	const { title } = req.body;	
+	const movie = await getFilmFromAPIByName(title);
+	
+	if (!movie) {
+		let error = new Error("Incorrect movie name o doesn't exist.");
+		error.status(400);
+		return next(error);
+	}
 	const newMovie = {
 		code: movie.id,
 		title: movie.title,
 		stock: 5,
 		rentals: 0,
 	};
+	
+	const findedMovie = prisma.movies.findFirst({where: {title : title}})
+	
+	if(findedMovie){
+		let error = new Error("Movie already exist.");
+		error.status = 400;
+		return next(error);
+	}
+
 	prisma.movies
 		.create(newMovie)
-		.then((movie) => res.status(201).send("Movie Stocked"))
+		.then((movie) => res.status(201).json(new ResponseObject("Movie created succesfully",true,201)))
 		.catch((err) => next(err));
-};
+}
 
 const addFavourite = async (req, res, next) => {
 	try {
@@ -129,7 +146,7 @@ const allFavouritesMovies = async (req, res, next) => {
 	try {
 		const { order } = req.query;
 
-		order ? (order = order) : (order = "asc");
+		if (!order) order = asc;
 		const allFilms = await prisma.favoriteFilms.findMany({
 			where: { id_user: parseInt(req.user.id) },
 		});
@@ -140,13 +157,16 @@ const allFavouritesMovies = async (req, res, next) => {
 			return allFilms.sort((a, b) => a.id - b.id);
 		}
 
-		allFilms.length > 0
-			? res.status(200).json(allFilms)
-			: res.status(404).json({ errorMessage: "Movies not found" });
+		if (allFilms.length < 1) {
+			let error = new Error("Movies not found");
+			error.status(404);
+			return next(error);
+		}
+		res.status(200).json(allFilms);
 	} catch (error) {
-		const { name } = error;
-		console.log(name);
-		res.status(500).json({ error: "Error in Data Base" });
+		res
+			.status(500)
+			.json(new ResponseObject("Internal server error.", false, 500));
 	}
 };
 
@@ -155,5 +175,6 @@ module.exports = {
 	getMovieDetails,
 	addMovie,
 	getMovieByTitle,
-  addFavourite
+	addFavourite,
+	allFavouritesMovies,
 };

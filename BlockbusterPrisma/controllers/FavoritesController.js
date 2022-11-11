@@ -13,11 +13,11 @@ const addFavourite = async (req, res, next) => {
       },
     });
     if (verifyFavoriteFilm.length > 0){
-      return res
-      .status(400)
-      .json(new ResponseObject("Film already added to favorite",false,400));
+      let error = new Error("Film already added to favorite");
+      error.status = 400;
+      return next(error);
     }
-
+    
     prisma.movies.findUnique({ where: { code: code } }).then((film) => {
       if (!film) throw new Error("Movie not avaliable ");
 
@@ -30,7 +30,10 @@ const addFavourite = async (req, res, next) => {
       prisma.favoriteFilms
         .create({ data: newFavouriteFilms })
         .then((newFav) => {
-          if (!newFav) throw new Error("FAILED to add favorite movie");
+          if (!newFav) {
+            let error =  new Error("Failed to add a favorite movie");
+          error.status = 500;
+          }
 
           res.status(201).json(new ResponseObject("Movie Added to Favorites",true,201));
         });
@@ -56,10 +59,9 @@ const allFavouritesMovies = async (req, res, next) => {
 
     allFilms.length > 0
       ? res.status(200).json(allFilms)
-      : res.status(404).json({ errorMessage: "Movies not found" });
+      : res.status(404).json( new ResponseObject("Movies not found",false,404));
   } catch (error) {
-    console.log(error);
-    res.status(500).json({ error: "Internal Error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 module.exports = {
